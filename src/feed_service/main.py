@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Security
+from fastapi import FastAPI, HTTPException, Depends, Security, APIRouter
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -265,6 +265,35 @@ async def update_keywords(
     db.commit()
     return {"status": "success", "keywords": keywords}
 
+class KeywordResponse(BaseModel):
+    id: int
+    keyword: str
+    created_at: datetime
+
+@app.get("/api/keywords", response_model=List[KeywordResponse])
+async def get_user_keywords(
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all keywords for the current user"""
+    keywords = db.execute(
+        text("""
+        SELECT id, keyword, created_at
+        FROM user_keywords
+        WHERE user_id = :user_id
+        ORDER BY created_at DESC
+        """),
+        {"user_id": current_user_id}
+    ).fetchall()
+    
+    return [
+        KeywordResponse(
+            id=row.id,
+            keyword=row.keyword,
+            created_at=row.created_at,
+        )
+        for row in keywords
+    ]
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,4 +1,4 @@
-# expert-palm-tree
+# 👩‍💻🌴
 
 A custom feed generator for Bluesky that allows users to create personalized feeds based on keywords and topics.
 
@@ -35,6 +35,8 @@ uv run uvicorn feed_service.main:app --reload
 
 ## Client
 
+This exposes a [REST API](http://localhost:8000/docs) at the `/docs` path of the `feed_service`. You'll need to start the database and run `ingestion` for a while to get some content to work with. Obviously the more content you have, the more fun this becomes.
+
 You can call the feed service using cUrl like this: 
 ```
 # First, get a token by logging in
@@ -42,7 +44,7 @@ curl -X POST http://localhost:8000/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "username=your.email@example.com&password=yourpassword"
 
-# Assuming you set the token returned as ACCESS_TOKEN
+# Assuming you set the token returned as ACCESS_TOKEN (jq -r ".access_token" does this nicely)
 curl -X POST http://localhost:8000/api/keywords -d '["deepseek"]' \
   -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json'
 
@@ -77,5 +79,5 @@ flowchart LR
 
 ## References
 
-[AT Protocol Summary](https://en.wikipedia.org/wiki/AT_Protocol)
-[Jetstream](https://github.com/bluesky-social/jetstream) - simplified version of the Bluesky Firehose that this service uses.
+* [AT Protocol Summary](https://en.wikipedia.org/wiki/AT_Protocol)
+* [Jetstream](https://github.com/bluesky-social/jetstream) - simplified version of the Bluesky Firehose that this service uses.

@@ -1,3 +1,23 @@
+Metadata-Version: 2.2
+Name: expert-palm-tree
+Version: 0.1.0
+Summary: Synthesizes custom feeds for BlueSky based on keywords or other search terms
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: alembic>=1.14.0
+Requires-Dist: bcrypt>=4.2.1
+Requires-Dist: fastapi>=0.115.6
+Requires-Dist: psycopg2-binary>=2.9.10
+Requires-Dist: pydantic[email]>=2.10.5
+Requires-Dist: pydantic-settings>=2.7.1
+Requires-Dist: python-dotenv>=1.0.1
+Requires-Dist: sqlalchemy>=2.0.37
+Requires-Dist: uvicorn>=0.34.0
+Requires-Dist: websockets>=14.1
+Requires-Dist: pyjwt>=2.10.1
+Requires-Dist: python-multipart>=0.0.20
+
 # expert-palm-tree
 
 A custom feed generator for Bluesky that allows users to create personalized feeds based on keywords and topics.
@@ -31,25 +51,6 @@ uv run python -m ingestion.main
 Feed service:
 ```bash
 uv run uvicorn feed_service.main:app --reload
-```
-
-## Client
-
-You can call the feed service using cUrl like this: 
-```
-# First, get a token by logging in
-curl -X POST http://localhost:8000/token \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=your.email@example.com&password=yourpassword"
-
-# Assuming you set the token returned as ACCESS_TOKEN
-curl -X POST http://localhost:8000/api/keywords -d '["deepseek"]' \
-  -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json'
-
-# Use the token to access the feed
-curl -X GET http://localhost:8000/api/feed \
-  -H "Authorization: Bearer $ACCESS_TOKEN"
-
 ```
 
 ## Architecture

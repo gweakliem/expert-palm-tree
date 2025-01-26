@@ -1,0 +1,17 @@
+LICENSE
+README.md
+pyproject.toml
+src/expert_palm_tree.egg-info/PKG-INFO
+src/expert_palm_tree.egg-info/SOURCES.txt
+src/expert_palm_tree.egg-info/dependency_links.txt
+src/expert_palm_tree.egg-info/requires.txt
+src/expert_palm_tree.egg-info/top_level.txt
+src/feed_service/__init__.py
+src/feed_service/main.py
+src/ingestion/__init__.py
+src/ingestion/main.py
+src/migrations/__init__.py
+src/migrations/env.py
+src/shared/__init__.py
+src/shared/config.py
+src/shared/database.py

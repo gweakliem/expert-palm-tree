@@ -24,10 +24,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-
 class Token(BaseModel):
     access_token: str
     token_type: str
+
 
 class TokenData(BaseModel):
     user_id: int
@@ -45,6 +45,12 @@ class UserCreate(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+
+class KeywordResponse(BaseModel):
+    id: int
+    keyword: str
+    created_at: datetime
 
 
 class KeywordUpdate(BaseModel):
@@ -71,12 +77,33 @@ class PostResponse(BaseModel):
     thread_root: str | None
 
 
+class FeedListingResponse(BaseModel):
+    feed_id: int
+    keywords: str
+    created_at: datetime
+    url: str
+
+class FeedsResponse(BaseModel):
+    """
+    Response containing list of feeds
+    """
+    feeds: List[FeedListingResponse]
+
+
 class FeedResponse(BaseModel):
     """
     Complete feed response with posts and keywords.
     """
 
     feed: List[PostResponse]
+    keywords: List[str]
+
+
+class FeedCreate(BaseModel):
+    """
+    Feed creation data.
+    """
+
     keywords: List[str]
 
 
@@ -180,9 +207,36 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
     user_id = result.first()[0]
     return {"id": user_id, "email": user.email}
 
+@app.get("/api/feeds", response_model=FeedsResponse)
+async def list_feeds(
+    current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """
+    List all feeds for the current user.
+    """
+    query = text(
+        """
+        SELECT id, created_at
+        FROM feeds 
+        WHERE user_id = :user_id
+    """
+    )
+    result = db.execute(query, {"user_id": current_user_id})
+    feed_listings = result.fetchall()
+    print(feed_listings)
+    return {
+        "feeds": [
+            FeedListingResponse(
+                feed_id=fl.id, keywords='', created_at=fl.created_at, url=f"/api/feeds/{fl.id}"
+            )
+            for fl in feed_listings
+        ]
+    }
 
-@app.get("/api/feed", response_model=FeedResponse)
-async def get_user_feed(
+
+@app.get("/api/feeds/{feed_id}", response_model=FeedResponse)
+async def get_feed(
+    feed_id: int,
     limit: int = 50,
     before: datetime = None,
     current_user_id: int = Depends(get_current_user),
@@ -196,18 +250,19 @@ async def get_user_feed(
     """
     query = text(
         """
-        SELECT keyword 
+        SELECT keyword, updated_at 
         FROM user_keywords 
-        WHERE user_id = :user_id
+        WHERE user_id = :user_id and feed_id = :feed_id
     """
     )
-    result = db.execute(query, {"user_id": current_user_id})
-    keywords = [row[0] for row in result]
+    result = db.execute(
+        query, {"user_id": current_user_id, "feed_id": feed_id}
+    )  # Replace with actual user ID
+    user_keywords = [row[0] for row in result]
+    if len (user_keywords) == 0:
+        raise HTTPException(status_code=404, detail="Feed not found")
 
-    if not keywords:
-        raise HTTPException(status_code=400, detail="No keywords defined")
-
-    search_terms = " & ".join(keywords)  # TODO | (keyword OR) support
+    search_terms = " & ".join(user_keywords)  # TODO | (keyword OR) support
     posts_query = text(
         """
         SELECT id, did, record_text, created_at, reply_parent_uri, reply_root_uri
@@ -220,11 +275,14 @@ async def get_user_feed(
     )
 
     before = before or datetime.now(UTC)
-    posts = db.execute(posts_query, {"before": before, "search_terms": search_terms, "limit": limit * 2})
+    posts = db.execute(
+        posts_query,
+        {"before": before, "search_terms": search_terms, "limit": limit * 2},
+    )
 
     matching_posts = []
     for post in posts:
-        if any(keyword.lower() in post.record_text.lower() for keyword in keywords):
+        if any(keyword.lower() in post.record_text.lower() for keyword in user_keywords):
             matching_posts.append(
                 {
                     "id": post.id,
@@ -238,11 +296,11 @@ async def get_user_feed(
         if len(matching_posts) >= limit:
             break
 
-    return {"feed": matching_posts, "keywords": keywords}
+    return {"feed": matching_posts, "keywords": user_keywords}
 
 
-@app.post("/api/keywords")
-async def update_keywords(
+@app.post("/api/feeds")
+async def create_feed(
     keywords: List[str],
     current_user_id: int = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -252,67 +310,74 @@ async def update_keywords(
 
     - **keywords**: List of new keywords to use for filtering
     """
-    delete_query = text(
+    insert_feed_query = text(
         """
-        DELETE FROM user_keywords
-        WHERE user_id = :user_id
-    """
+        INSERT INTO feeds (user_id, created_at, updated_at)
+        VALUES (:user_id, :created_at, :updated_at)
+        RETURNING id
+        """ 
     )
-    db.execute(delete_query, {"user_id": current_user_id})
- 
-    insert_query = text(
+    insert_keyword_query = text(
         """
-        INSERT INTO user_keywords (user_id, keyword, created_at)
-        VALUES (:user_id, :keyword, :created_at)
+        INSERT INTO user_keywords (user_id, keyword, feed_id, created_at)
+        VALUES (:user_id, :keyword, :feed_id, :created_at)
     """
     )
 
+    feed = db.execute(
+        insert_feed_query,
+        {
+            "user_id": current_user_id,
+            "created_at": datetime.now(UTC),
+            "updated_at": datetime.now(UTC),
+        },
+    )
+    feed_id = feed.first()[0]
+
     for keyword in keywords:
         db.execute(
-            insert_query,
+            insert_keyword_query,
             {
                 "user_id": current_user_id,
                 "keyword": keyword,
+                "feed_id": feed_id,
                 "created_at": datetime.now(UTC),
             },
         )
 
     db.commit()
-    return {"status": "success", "keywords": keywords}
+    return {"status": "success", "keywords": keywords, "feed_id": feed_id}
 
-
-class KeywordResponse(BaseModel):
-    id: int
-    keyword: str
-    created_at: datetime
-
-
-@app.get("/api/keywords", response_model=List[KeywordResponse])
-async def get_user_keywords(
-    current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)
+@app.delete("/api/feeds/{feed_id}")
+def delete_feed(feed_id: int, current_user_id: int = Depends(get_current_user),     db: Session = Depends(get_db),
 ):
-    """Get all keywords for the current user"""
-    keywords = db.execute(
-        text(
-            """
-        SELECT id, keyword, created_at
-        FROM user_keywords
-        WHERE user_id = :user_id
-        ORDER BY created_at DESC
+    """
+    Delete a feed by ID.
+    """
+    db.begin()
+    feed_query = text(
         """
-        ),
-        {"user_id": current_user_id},
-    ).fetchall()
+        DELETE
+        FROM user_keywords 
+        WHERE user_id = :user_id and feed_id = :feed_id
+    """
+    )
+    result = db.execute(
+        feed_query, {"user_id": current_user_id, "feed_id": feed_id}
+    )
 
-    return [
-        KeywordResponse(
-            id=row.id,
-            keyword=row.keyword,
-            created_at=row.created_at,
-        )
-        for row in keywords
-    ]
+    query = text(
+        """
+        DELETE FROM feeds
+        WHERE user_id = :user_id and id = :feed_id
+    """
+    )
+    result = db.execute(query, {"user_id": current_user_id, "feed_id": feed_id})
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Feed not found")
 
+    db.commit()
+    return {"status": "success"}
 
 if __name__ == "__main__":
     import uvicorn

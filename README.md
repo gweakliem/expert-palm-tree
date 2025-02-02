@@ -37,19 +37,26 @@ uv run uvicorn feed_service.main:app --reload
 
 This exposes a [REST API](http://localhost:8000/docs) at the `/docs` path of the `feed_service`. You'll need to start the database and run `ingestion` for a while to get some content to work with. Obviously the more content you have, the more fun this becomes.
 
+You'll have to create a user first:
+```
+curl -s -X POST http://localhost:8000/user \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=$PALM_USER&password=$PALM_PWD"
+```
+
 You can call the feed service using cUrl like this: 
 ```
-# First, get a token by logging in
-curl -X POST http://localhost:8000/token \
+# get a token by logging in
+ACCESS_TOKEN=$(curl -s -X POST http://localhost:8000/token \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=your.email@example.com&password=yourpassword"
+  -d "username=$PALM_USER&password=$PALM_PWD" | jq -r ".access_token")
 
 # Assuming you set the token returned as ACCESS_TOKEN (jq -r ".access_token" does this nicely)
-curl -X POST http://localhost:8000/api/keywords -d '["deepseek"]' \
+curl -X POST http://localhost:8000/api/feeds -d '["deepseek"]' \
   -H "Authorization: Bearer $ACCESS_TOKEN" -H 'Content-Type: application/json'
 
 # Use the token to access the feed
-curl -X GET http://localhost:8000/api/feed \
+curl -X GET http://localhost:8000/api/feeds \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 
 ```
@@ -77,7 +84,12 @@ flowchart LR
 ```
 
 
+## Performance
+
+I estimate about 200GB / week to collect post data as of January 2025, obviously this measures overall Bluesky activity so it can increase.
+
 ## References
 
 * [AT Protocol Summary](https://en.wikipedia.org/wiki/AT_Protocol)
 * [Jetstream](https://github.com/bluesky-social/jetstream) - simplified version of the Bluesky Firehose that this service uses.
+

@@ -10,6 +10,37 @@ from shared.database import get_db
 import bcrypt
 import jwt
 from jwt.exceptions import InvalidTokenError
+import logging
+from logging.config import dictConfig
+
+logging_config = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "default",
+            "stream": "ext://sys.stdout"
+        },
+        "file": {
+            "class": "logging.FileHandler",
+            "formatter": "default",
+            "filename": "feed_service.log"
+        }
+    },
+    "root": {
+        "level": "INFO",
+        "handlers": ["console", "file"]
+    }
+}
+
+dictConfig(logging_config)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Bluesky Custom Feed API",
@@ -259,6 +290,7 @@ async def get_feed(
         query, {"user_id": current_user_id, "feed_id": feed_id}
     )  # Replace with actual user ID
     user_keywords = [row[0] for row in result]
+    
     if len (user_keywords) == 0:
         raise HTTPException(status_code=404, detail="Feed not found")
 
@@ -310,6 +342,8 @@ async def create_feed(
 
     - **keywords**: List of new keywords to use for filtering
     """
+    logger.info(f"Creating new feed for user {current_user_id} with keywords: {keywords}")
+
     insert_feed_query = text(
         """
         INSERT INTO feeds (user_id, created_at, updated_at)

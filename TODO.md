@@ -17,4 +17,12 @@ I think what needs to happen next
     }
 ```
 
-3. 
+3. Add a --cursor argument to ingestion so we can start up reading from the past.
+
+
+## Errors
+
+DB goes down
+```
+2025-02-02 19:27:33,444 - __main__ - ERROR - Error inserting post 8a859e26-456a-45f3-ad9a-e51b5f9e5cc5: Can't reconnect until invalid transaction is rolled back.  Please rollback() fully before proceeding (Background on this error at: https://sqlalche.me/e/20/8s2b)
+```

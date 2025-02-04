@@ -201,19 +201,6 @@ async def run_ingestion():
 
 
 if __name__ == "__main__":
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-            ALTER TABLE posts 
-            ADD COLUMN IF NOT EXISTS cursor TEXT;
-            
-            CREATE INDEX IF NOT EXISTS idx_posts_cursor 
-            ON posts(cursor DESC NULLS LAST);
-        """
-            )
-        )
-
     try:
         asyncio.run(run_ingestion())
     except asyncio.exceptions.CancelledError:

@@ -17,26 +17,21 @@ logging_config = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "default": {
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        }
+        "default": {"format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"}
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "default",
-            "stream": "ext://sys.stdout"
+            "stream": "ext://sys.stdout",
         },
         "file": {
             "class": "logging.FileHandler",
             "formatter": "default",
-            "filename": "feed_service.log"
-        }
+            "filename": "feed_service.log",
+        },
     },
-    "root": {
-        "level": "INFO",
-        "handlers": ["console", "file"]
-    }
+    "root": {"level": "INFO", "handlers": ["console", "file"]},
 }
 
 dictConfig(logging_config)
@@ -54,6 +49,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
 
 class Token(BaseModel):
     access_token: str
@@ -114,10 +110,12 @@ class FeedListingResponse(BaseModel):
     created_at: datetime
     url: str
 
+
 class FeedsResponse(BaseModel):
     """
     Response containing list of feeds
     """
+
     feeds: List[FeedListingResponse]
 
 
@@ -238,6 +236,7 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
     user_id = result.first()[0]
     return {"id": user_id, "email": user.email}
 
+
 @app.get("/api/feeds", response_model=FeedsResponse)
 async def list_feeds(
     current_user_id: int = Depends(get_current_user), db: Session = Depends(get_db)
@@ -258,7 +257,10 @@ async def list_feeds(
     return {
         "feeds": [
             FeedListingResponse(
-                feed_id=fl.id, keywords='', created_at=fl.created_at, url=f"/api/feeds/{fl.id}"
+                feed_id=fl.id,
+                keywords="",
+                created_at=fl.created_at,
+                url=f"/api/feeds/{fl.id}",
             )
             for fl in feed_listings
         ]
@@ -290,27 +292,38 @@ async def get_feed(
         query, {"user_id": current_user_id, "feed_id": feed_id}
     )  # Replace with actual user ID
     user_keywords = [row[0] for row in result]
-    
-    if len (user_keywords) == 0:
+
+    if len(user_keywords) == 0:
         raise HTTPException(status_code=404, detail="Feed not found")
 
-    search_terms = " & ".join(user_keywords)  # TODO | (keyword OR) support
+    search_terms = []
+    for idx, keyword in enumerate(user_keywords):
+        if keyword.find(" ") != -1:
+            search_terms.append(
+                f"to_tsvector('english', record_text) @@ phraseto_tsquery('english', :keyword_{idx})"
+            )
+        else:
+            search_terms.append(
+                f"to_tsvector('english', record_text) @@ to_tsquery('english', :keyword_{idx})"
+            )
+
     posts_query = text(
-        """
+        f"""
         SELECT id, did, record_text, created_at, reply_parent_uri, reply_root_uri
         FROM posts
         WHERE (created_at < :before) AND
-        	(to_tsvector('english', record_text) @@ plainto_tsquery('english', :search_terms))
+        ({" AND ".join(search_terms)})
         ORDER BY created_at DESC
         LIMIT :limit
-    """
+        """
     )
 
     before = before or datetime.now(UTC)
-    posts = db.execute(
-        posts_query,
-        {"before": before, "search_terms": search_terms, "limit": limit * 2},
-    )
+    params = {"before": before, "limit": limit * 2}
+    for idx, keyword in enumerate(user_keywords):
+        params[f"keyword_{idx}"] = keyword
+
+    posts = db.execute(posts_query, params)
 
     matching_posts = []
     for post in posts:
@@ -337,16 +350,18 @@ async def create_feed(
     """
     Update the keywords used for filtering a user's feed.
 
-    - **keywords**: List of new keywords to use for filtering
+    - **keywords**: List of new keywords to use for filtering. Keywords may be phrases,
     """
-    logger.info(f"Creating new feed for user {current_user_id} with keywords: {keywords}")
+    logger.info(
+        f"Creating new feed for user {current_user_id} with keywords: {keywords}"
+    )
 
     insert_feed_query = text(
         """
         INSERT INTO feeds (user_id, created_at, updated_at)
         VALUES (:user_id, :created_at, :updated_at)
         RETURNING id
-        """ 
+        """
     )
     insert_keyword_query = text(
         """
@@ -379,8 +394,12 @@ async def create_feed(
     db.commit()
     return {"status": "success", "keywords": keywords, "feed_id": feed_id}
 
+
 @app.delete("/api/feeds/{feed_id}")
-def delete_feed(feed_id: int, current_user_id: int = Depends(get_current_user),     db: Session = Depends(get_db),
+def delete_feed(
+    feed_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Delete a feed by ID.
@@ -393,9 +412,7 @@ def delete_feed(feed_id: int, current_user_id: int = Depends(get_current_user), 
         WHERE user_id = :user_id and feed_id = :feed_id
     """
     )
-    result = db.execute(
-        feed_query, {"user_id": current_user_id, "feed_id": feed_id}
-    )
+    result = db.execute(feed_query, {"user_id": current_user_id, "feed_id": feed_id})
 
     query = text(
         """
@@ -409,6 +426,7 @@ def delete_feed(feed_id: int, current_user_id: int = Depends(get_current_user), 
 
     db.commit()
     return {"status": "success"}
+
 
 if __name__ == "__main__":
     import uvicorn

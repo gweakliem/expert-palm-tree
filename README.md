@@ -74,6 +74,12 @@ curl -i -X GET http://localhost:8000/api/feeds/$FEED_ID \
   -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
+## Feed construction
+
+Feeds are composed of keywords, which should probably be called "key phrases". For example creating a feed with the keywords `["trump administration","venezuela"]`, will find posts that match the phrase "trump administration" and contain the word "venezuela". A post that mentions "the administration of Donald Trump" and also mentions Venezuela will _not_ show up in this feed.
+
+The feed is composed using the logical `AND` of the phrases, so all phrases must be matched to show up in the feed. I might add `OR` at a later date but I feel like this is not that valuable for the purpose of building a feed, you could logically just build 2 feeds and look at both of them to get the same results as an `OR`.
+
 ## Architecture
 
 ```mermaid

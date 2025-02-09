@@ -314,19 +314,16 @@ async def get_feed(
 
     matching_posts = []
     for post in posts:
-        if any(keyword.lower() in post.record_text.lower() for keyword in user_keywords):
-            matching_posts.append(
-                {
-                    "id": post.id,
-                    "author": post.did,
-                    "text": post.record_text,
-                    "created_at": post.created_at.isoformat(),
-                    "reply_to": post.reply_parent_uri,
-                    "thread_root": post.reply_root_uri,
-                }
-            )
-        if len(matching_posts) >= limit:
-            break
+        matching_posts.append(
+            {
+                "id": post.id,
+                "author": post.did,
+                "text": post.record_text,
+                "created_at": post.created_at.isoformat(),
+                "reply_to": post.reply_parent_uri,
+                "thread_root": post.reply_root_uri,
+            }
+        )
 
     return {"feed": matching_posts, "keywords": user_keywords}
 

@@ -31,12 +31,12 @@ Ingestion service:
 uv run python -m ingestion.main
 ```
 
-Feed service:
+Feed service Web API:
 ```bash
 uv run uvicorn feed_service.main:app --reload
 ```
 
-## Client
+## Web API
 
 This exposes a [REST API](http://localhost:8000/docs) at the `/docs` path of the `feed_service`. You'll need to start the database and run `ingestion` for a while to get some content to work with. Obviously the more content you have, the more fun this becomes.
 
@@ -56,7 +56,7 @@ Now obtain an access token (assuming you have PALM_USER and PALM_PWD exported):
 ```
 # get a token by logging in
 ACCESS_TOKEN=$(curl -s -X POST http://localhost:8000/token \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
   -d "username=$PALM_USER&password=$PALM_PWD" | jq -r ".access_token")
 ```
 
@@ -99,7 +99,7 @@ flowchart LR
 
 ## Performance
 
-I estimate about 32GB / week to collect post data as of February 2025, obviously this measures overall Bluesky activity so it can increase.
+I estimate about 50GB / day to collect post data as of February 2025, obviously this measures overall Bluesky activity so it can increase if Bluesky becomes more popular and active.
 
 ## References
 

@@ -8,6 +8,12 @@ services:
       - "5432:5432"
     volumes:
       - bluesky-data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 2g   # Increase this to allocate more memory
+        reservations:
+          memory: 512m # Ensures a minimum reserved memory
 
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB" ]

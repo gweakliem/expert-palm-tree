@@ -57,12 +57,46 @@ async def get_last_cursor() -> Optional[str]:
 async def process_commit(did: str, op, cursor: str):
     """Extract post data from an operation"""
     record = op.get("record", {})
+    if len(record.keys()) == 0:
+        logger.info("empty record %s", op)
+        return
     # Handle the case where createdAt might be None or empty
     created_at_str = record.get("createdAt", "")
     if created_at_str:
         created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
     else:
         created_at = datetime.now(timezone.utc)  # fallback to current time if missing
+
+    record_text = record.get("text", "")
+    if record_text == "":
+        embed = record.get("embed", {})
+
+        if embed.get("external"):
+            # .embed["$type": "app.bsky.embed.external"].external.description
+            record_text = embed["external"].get("description", "")
+            if record_text == "":
+                # .embed["$type": "app.bsky.embed.external"].external.title (both may be present, title is less detailed)
+                record_text = embed["external"].get("title", "")
+        elif embed.get("images"):
+            # .embed[$type='app.bsky.embed.images'].images[].alt - alt text for images if no other text is present
+            record_text = " ".join([img.get("alt", "") for img in embed["images"]])
+        elif embed.get("video"):
+            # .embed[$type='app.bsky.embed.images'].images[].alt - alt text for images if no other text is present
+            record_text = embed["video"].get("text", "")
+
+    # .bridgyOriginalText - contains markup, one of the above embeds should be present.
+    # TODO: scrub markup?
+    # if record_text == "":
+    #     record_text = record.get("bridgyOriginalText", "")
+
+    # Seem to get a few of these, probably due to bad encoding from the client.
+    if '\x00' in record_text:
+        logger.info("DID %s record_text contains null byte %s", did, op)
+        return
+
+    if record_text == "":
+        #logger.info("empty text %s", op)
+        return
 
     return {
         "id": uuid4(),
@@ -78,7 +112,7 @@ async def process_commit(did: str, op, cursor: str):
         "reply_parent_uri": record.get("reply", {}).get("parent", {}).get("uri"),
         "reply_root_cid": record.get("reply", {}).get("root", {}).get("cid"),
         "reply_root_uri": record.get("reply", {}).get("root", {}).get("uri"),
-        "record_text": record.get("text", ""),
+        "record_text": record_text,
         "ingest_time": datetime.now(timezone.utc),
         "cursor": cursor,  # Store the cursor with each record
     }
@@ -105,8 +139,21 @@ async def store_posts(posts, engine):
             :reply_parent_uri, :reply_root_cid, :reply_root_uri,
             :record_text, :ingest_time, :cursor
         )
-        ON CONFLICT (id) DO NOTHING
-    """
+        ON CONFLICT (commit_rev, commit_operation, commit_collection, commit_rkey, commit_cid) 
+        DO UPDATE SET 
+            id = EXCLUDED.id,  -- Keep latest ID
+            did = EXCLUDED.did,
+            created_at = EXCLUDED.created_at,  -- Ensuring latest timestamp is kept
+            langs = EXCLUDED.langs,
+            reply_parent_cid = EXCLUDED.reply_parent_cid,
+            reply_parent_uri = EXCLUDED.reply_parent_uri,
+            reply_root_cid = EXCLUDED.reply_root_cid,
+            reply_root_uri = EXCLUDED.reply_root_uri,
+            record_text = EXCLUDED.record_text,
+            ingest_time = EXCLUDED.ingest_time,
+            cursor = EXCLUDED.cursor
+        WHERE posts.created_at < EXCLUDED.created_at;    
+        """
     )
 
     with engine.begin() as conn:
@@ -125,7 +172,7 @@ async def process_message(message, state: IngestionState):
         # Update cursor from message
         cursor = data.get("time_us")
         if cursor is None:
-            logger.warn("no cursor in %s", data)
+            logger.warning("no cursor in %s", data)
             return
 
         state.cursor = str(cursor)
@@ -136,11 +183,12 @@ async def process_message(message, state: IngestionState):
             return
 
         if "commit" not in data:
-            logger.warn("no commit %s", data)
+            logger.warning("no commit %s", data)
             return
 
-        # if data.get("commit", {}).get("record", {}).get("text", "") == "":
-        #     logger.info("empty text %s", data)
+        # We're only interested in new posts
+        if data.get("commit", {}).get("operation", "") != "create":
+            return
 
         post_data = await process_commit(
             data.get("did"), data.get("commit"), state.cursor

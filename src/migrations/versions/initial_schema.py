@@ -32,11 +32,32 @@ def upgrade() -> None:
         sa.Column('record_text', sa.Text()),
         sa.Column('ingest_time', sa.TIMESTAMP(timezone=True)),
         sa.Column('cursor', sa.Text()),
-        sa.PrimaryKeyConstraint('id')
     )
     
+    op.create_primary_key("posts_pkey", "posts", ["id", "created_at"])
     op.create_index('idx_posts_cursor', 'posts', ['cursor'], unique=False)
     op.create_index('idx_posts_created_at', 'posts', ['created_at'], unique=False)
+    # Convert `posts` table to a hypertable**
+    op.execute(
+        """
+        SELECT create_hypertable('posts', 'created_at', 
+        if_not_exists => TRUE,
+        migrate_data => TRUE,
+        chunk_time_interval => INTERVAL '1 day'
+        );
+        """
+    )
+    op.execute("ALTER TABLE posts SET (timescaledb.compress = true);")
+
+    # Set retention policy
+    op.execute(
+        "SELECT add_retention_policy('posts', INTERVAL '7 days', if_not_exists => TRUE);"
+    )
+
+    # Create compression policy (compress chunks older than 1 day)
+    op.execute(
+        "SELECT add_compression_policy('posts', INTERVAL '1 day', if_not_exists => TRUE);"
+    )
 
     op.create_table(
         'users',

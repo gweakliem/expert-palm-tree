@@ -18,7 +18,7 @@ def upgrade():
     op.create_unique_constraint(
         "posts_unique_commit",
         "posts",
-        ["commit_rev", "commit_operation", "commit_collection", "commit_rkey", "commit_cid"]
+        ["created_at", "commit_rev", "commit_operation", "commit_collection", "commit_rkey", "commit_cid"]
     )
 
 def downgrade():

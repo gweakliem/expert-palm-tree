@@ -1,0 +1,20 @@
+FROM timescale/timescaledb:latest-pg16
+
+# Install build dependencies
+USER root
+RUN apk add --no-cache \
+    build-base \
+    clang \
+    llvm \
+    git \
+    postgresql-dev \
+    postgresql-client
+
+# Clone and build pgvector
+RUN git clone --branch v0.8.0 https://github.com/pgvector/pgvector.git \
+    && cd pgvector \
+    && make \
+    && make install
+
+# Switch back to postgres user
+USER postgres

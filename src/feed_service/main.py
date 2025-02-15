@@ -231,7 +231,6 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
             "created_at": datetime.now(UTC),
         },
     )
-    db.commit()
 
     user_id = result.first()[0]
     return {"id": user_id, "email": user.email}
@@ -370,28 +369,35 @@ async def create_feed(
     """
     )
 
-    feed = db.execute(
-        insert_feed_query,
-        {
-            "user_id": current_user_id,
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
-        },
-    )
-    feed_id = feed.first()[0]
-
-    for keyword in keywords:
-        db.execute(
-            insert_keyword_query,
+    try:
+        db.begin()
+        feed = db.execute(
+            insert_feed_query,
             {
                 "user_id": current_user_id,
-                "keyword": keyword,
-                "feed_id": feed_id,
                 "created_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
             },
         )
+        feed_id = feed.first()[0]
 
-    db.commit()
+        for keyword in keywords:
+            db.execute(
+                insert_keyword_query,
+                {
+                    "user_id": current_user_id,
+                    "keyword": keyword,
+                    "feed_id": feed_id,
+                    "created_at": datetime.now(UTC),
+                },
+            )
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating feed: {e}")
+        raise HTTPException(status_code=500, detail="Error creating feed")
+    
     return {"status": "success", "keywords": keywords, "feed_id": feed_id}
 
 
@@ -404,27 +410,32 @@ def delete_feed(
     """
     Delete a feed by ID.
     """
-    db.begin()
-    feed_query = text(
+    try:
+        db.begin()
+        feed_query = text(
+            """
+            DELETE
+            FROM user_keywords 
+            WHERE user_id = :user_id and feed_id = :feed_id
         """
-        DELETE
-        FROM user_keywords 
-        WHERE user_id = :user_id and feed_id = :feed_id
-    """
-    )
-    result = db.execute(feed_query, {"user_id": current_user_id, "feed_id": feed_id})
+        )
+        result = db.execute(feed_query, {"user_id": current_user_id, "feed_id": feed_id})
 
-    query = text(
+        query = text(
+            """
+            DELETE FROM feeds
+            WHERE user_id = :user_id and id = :feed_id
         """
-        DELETE FROM feeds
-        WHERE user_id = :user_id and id = :feed_id
-    """
-    )
-    result = db.execute(query, {"user_id": current_user_id, "feed_id": feed_id})
-    if result.rowcount == 0:
-        raise HTTPException(status_code=404, detail="Feed not found")
+        )
+        result = db.execute(query, {"user_id": current_user_id, "feed_id": feed_id})
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Feed not found")
 
-    db.commit()
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting feed: {e}")
+        
     return {"status": "success"}
 
 

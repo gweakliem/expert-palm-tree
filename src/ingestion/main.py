@@ -6,7 +6,10 @@ import websockets
 from sqlalchemy import create_engine, text
 from typing import Optional
 from dataclasses import dataclass, field
+from sentence_transformers import SentenceTransformer
+import numpy as np
 from shared.config import settings
+import torch
 import os
 from uuid import uuid4
 
@@ -26,6 +29,12 @@ flush_interval = settings.flush_interval_seconds
 base_uri = settings.jetstream_uri
 logger.info(f"CurDir: {os.getcwd()}")
 logger.info(settings.model_dump())
+
+# Initialize the embedding model
+# Using all-MiniLM-L6-v2 as it's a good balance of speed and quality
+model = SentenceTransformer(
+    "all-MiniLM-L6-v2", device="cuda" if torch.cuda.is_available() else "cpu"
+)
 
 
 @dataclass
@@ -52,6 +61,17 @@ async def get_last_cursor() -> Optional[str]:
     with engine.connect() as conn:
         result = conn.execute(query).first()
         return result[0] if result else None
+
+
+def generate_embedding(text: str) -> list[float]:
+    """Generate embedding for post text"""
+    try:
+        # Generate embedding
+        embedding = model.encode(text, convert_to_numpy=True, show_progress_bar=False)
+        return embedding.tolist()
+    except Exception as e:
+        logger.error(f"Error generating embedding: {e}")
+        return None
 
 
 async def process_commit(did: str, op, cursor: str):
@@ -90,14 +110,22 @@ async def process_commit(did: str, op, cursor: str):
     #     record_text = record.get("bridgyOriginalText", "")
 
     # Seem to get a few of these, probably due to bad encoding from the client.
-    if '\x00' in record_text:
+    if "\x00" in record_text:
         logger.info("DID %s record_text contains null byte %s", did, op)
         return
 
     if record_text == "":
-        #logger.info("empty text %s", op)
+        # logger.info("empty text %s", op)
         return
 
+    # This runs terrible, I think embedding needs to be taken out-of-band
+    # 0.2127881232 seconds/250 records w/o embedding
+    # 1.832572528 seconds/250 records w/ embedding, about 10x slower
+    # Also the firehose frequently disconnects with embeddings on I suspect a timeout
+    # Also, the database acts strangely, it seems like the app thinks it's committing rows
+    # but they don't show up in the database as an increasing row count.
+    embedding = None # generate_embedding(record_text)
+    
     return {
         "id": uuid4(),
         "did": did,
@@ -114,7 +142,8 @@ async def process_commit(did: str, op, cursor: str):
         "reply_root_uri": record.get("reply", {}).get("root", {}).get("uri"),
         "record_text": record_text,
         "ingest_time": datetime.now(timezone.utc),
-        "cursor": cursor,  # Store the cursor with each record
+        "cursor": cursor,  # Cursor tells us where we left off
+        'embedding': embedding
     }
 
 
@@ -130,16 +159,16 @@ async def store_posts(posts, engine):
             commit_collection, commit_rkey, commit_cid,
             created_at, langs, reply_parent_cid,
             reply_parent_uri, reply_root_cid, reply_root_uri,
-            record_text, ingest_time, cursor
+            record_text, ingest_time, cursor, embedding
         )
         VALUES (
             :id, :did, :commit_rev, :commit_operation,
             :commit_collection, :commit_rkey, :commit_cid,
             :created_at, :langs, :reply_parent_cid,
             :reply_parent_uri, :reply_root_cid, :reply_root_uri,
-            :record_text, :ingest_time, :cursor
+            :record_text, :ingest_time, :cursor, :embedding
         )
-        ON CONFLICT (commit_rev, commit_operation, commit_collection, commit_rkey, commit_cid) 
+        ON CONFLICT (created_at, commit_rev, commit_operation, commit_collection, commit_rkey, commit_cid) 
         DO UPDATE SET 
             id = EXCLUDED.id,  -- Keep latest ID
             did = EXCLUDED.did,
@@ -151,7 +180,8 @@ async def store_posts(posts, engine):
             reply_root_uri = EXCLUDED.reply_root_uri,
             record_text = EXCLUDED.record_text,
             ingest_time = EXCLUDED.ingest_time,
-            cursor = EXCLUDED.cursor
+            cursor = EXCLUDED.cursor,
+            embedding = EXCLUDED.embedding
         WHERE posts.created_at < EXCLUDED.created_at;    
         """
     )

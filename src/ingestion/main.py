@@ -6,12 +6,9 @@ import websockets
 from sqlalchemy import create_engine, text
 from typing import Optional
 from dataclasses import dataclass, field
-from sentence_transformers import SentenceTransformer
-import numpy as np
 from shared.config import settings
-import torch
-import os
 from uuid import uuid4
+import os
 
 
 # Configure logging
@@ -29,12 +26,6 @@ flush_interval = settings.flush_interval_seconds
 base_uri = settings.jetstream_uri
 logger.info(f"CurDir: {os.getcwd()}")
 logger.info(settings.model_dump())
-
-# Initialize the embedding model
-# Using all-MiniLM-L6-v2 as it's a good balance of speed and quality
-model = SentenceTransformer(
-    "all-MiniLM-L6-v2", device="cuda" if torch.cuda.is_available() else "cpu"
-)
 
 
 @dataclass
@@ -61,17 +52,6 @@ async def get_last_cursor() -> Optional[str]:
     with engine.connect() as conn:
         result = conn.execute(query).first()
         return result[0] if result else None
-
-
-def generate_embedding(text: str) -> list[float]:
-    """Generate embedding for post text"""
-    try:
-        # Generate embedding
-        embedding = model.encode(text, convert_to_numpy=True, show_progress_bar=False)
-        return embedding.tolist()
-    except Exception as e:
-        logger.error(f"Error generating embedding: {e}")
-        return None
 
 
 async def process_commit(did: str, op, cursor: str):

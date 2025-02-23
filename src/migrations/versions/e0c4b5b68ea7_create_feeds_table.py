@@ -1,7 +1,7 @@
 """Create feeds table
 
 Revision ID: e0c4b5b68ea7
-Revises: 51209ea5380d
+Revises: 445cd5e810b3
 Create Date: 2025-02-01 18:54:25.200928
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'e0c4b5b68ea7'
-down_revision = '51209ea5380d'
+down_revision = '445cd5e810b3'
 branch_labels = None
 depends_on = None
 

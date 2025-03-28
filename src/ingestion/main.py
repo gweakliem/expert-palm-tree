@@ -61,6 +61,7 @@ async def process_commit(did: str, op, cursor: str):
         logger.info("empty record %s", op)
         return
     # Handle the case where createdAt might be None or empty
+    # TODO: some of these dates are clearly BS, 1970-01-01 00:00:00 for example (obv unix 0 time)
     created_at_str = record.get("createdAt", "")
     if created_at_str:
         created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
@@ -68,6 +69,7 @@ async def process_commit(did: str, op, cursor: str):
         created_at = datetime.now(timezone.utc)  # fallback to current time if missing
 
     record_text = record.get("text", "")
+    # if there's no record.text, fall back on embed - either external.description, external.title, images.alt, or video.text
     if record_text == "":
         embed = record.get("embed", {})
 
@@ -105,7 +107,7 @@ async def process_commit(did: str, op, cursor: str):
     # Also, the database acts strangely, it seems like the app thinks it's committing rows
     # but they don't show up in the database as an increasing row count.
     embedding = None # generate_embedding(record_text)
-    
+
     return {
         "id": uuid4(),
         "did": did,
@@ -135,21 +137,21 @@ async def store_posts(posts, engine):
     insert_stmt = text(
         """
         INSERT INTO posts (
-            id, did, commit_rev, commit_operation, 
+            id, did, commit_rev, commit_operation,
             commit_collection, commit_rkey, commit_cid,
             created_at, langs, reply_parent_cid,
             reply_parent_uri, reply_root_cid, reply_root_uri,
-            record_text, ingest_time, cursor, embedding
+            record_text, ingest_time, cursor
         )
         VALUES (
             :id, :did, :commit_rev, :commit_operation,
             :commit_collection, :commit_rkey, :commit_cid,
             :created_at, :langs, :reply_parent_cid,
             :reply_parent_uri, :reply_root_cid, :reply_root_uri,
-            :record_text, :ingest_time, :cursor, :embedding
+            :record_text, :ingest_time, :cursor
         )
-        ON CONFLICT (created_at, commit_rev, commit_operation, commit_collection, commit_rkey, commit_cid) 
-        DO UPDATE SET 
+        ON CONFLICT (created_at, commit_rev, commit_operation, commit_collection, commit_rkey, commit_cid)
+        DO UPDATE SET
             id = EXCLUDED.id,  -- Keep latest ID
             did = EXCLUDED.did,
             created_at = EXCLUDED.created_at,  -- Ensuring latest timestamp is kept
@@ -160,9 +162,8 @@ async def store_posts(posts, engine):
             reply_root_uri = EXCLUDED.reply_root_uri,
             record_text = EXCLUDED.record_text,
             ingest_time = EXCLUDED.ingest_time,
-            cursor = EXCLUDED.cursor,
-            embedding = EXCLUDED.embedding
-        WHERE posts.created_at < EXCLUDED.created_at;    
+            cursor = EXCLUDED.cursor
+        WHERE posts.created_at < EXCLUDED.created_at;
         """
     )
 

@@ -4,9 +4,15 @@ venv/
 
 data/*
 
+# IDE config & files
 .idea
 .venv/
+.zed/
+.cursor/
 
+# Python
 __pycache__
 
+# Temporary files
 *.log
+*.swp

@@ -36,6 +36,11 @@ Feed service Web API:
 uv run uvicorn feed_service.main:app --reload
 ```
 
+Embedding Service:
+```bash
+uv run python -m embedding.main
+```
+
 ## Web API
 
 This exposes a [REST API](http://localhost:8000/docs) at the `/docs` path of the `feed_service`. You'll need to start the database and run `ingestion` for a while to get some content to work with. Obviously the more content you have, the more fun this becomes.

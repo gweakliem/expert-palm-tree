@@ -48,11 +48,11 @@ async def run_ingestion():
                 pull_time = datetime.now(UTC)
                 posts = conn.execute(
                     text("""
-                    SELECT id, created_at, record_text 
-                    FROM posts 
-                    WHERE embedding IS NULL 
-                    ORDER BY created_at ASC 
-                    LIMIT :batch_size
+                    SELECT p.id, p.created_at, p.record_text 
+                    FROM posts p
+                    LEFT JOIN embeddings e ON p.id = e.post_id
+                    WHERE e.post_id IS NULL
+                    LIMIT :batch_size;
                     """),
                     {"batch_size": batch_size}
                 ).fetchall()
@@ -80,15 +80,15 @@ async def run_ingestion():
                         query_time = datetime.now(UTC)
                         result = conn.execute(
                             text("""
-                            UPDATE posts 
-                            SET embedding = :embedding
-                            WHERE id = :post_id and created_at = :created_at
+                            INSERT INTO embeddings (id, post_id, post_created_at, embedding, created_at, updated_at)
+                            VALUES (0, :post_id, :post_created_at, :embedding, :created_at, :updated_at);
                             """),
                             {
-                                "embedding": embedding,
                                 "post_id": post.id,
-                                "created_at": post.created_at
-                                #"updated_at": datetime.now(UTC)
+                                "post_created_at": post.created_at,
+                                "embedding": embedding,
+                                "created_at": datetime.now(UTC),
+                                "updated_at": datetime.now(UTC)
                             }
                         )
                         elapsed_query += (datetime.now(UTC) - query_time).total_seconds()
